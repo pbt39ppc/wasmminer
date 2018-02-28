@@ -1,7 +1,19 @@
 $(function(){
   var cores = navigator.hardwareConcurrency;
+  if (cores == null) {
+    cores = 4;
+  }
+  $('#threads').children().remove();
+  for (var i = 1; i <= cores; i++) {
+    $('#threads').append($('<option>').attr({ value: i }).text(i));
+  }
   $('#threads').val(cores);
-
+  $('#meter').text("");
+  $('#meter').append('Speed: (hashes/s)<br>');
+  for (var i = 1; i <= cores; i++) {
+    $('#meter').append('Worker '+i+': <span id="meter'+i+'">-.-</span><br>')
+  }
+    
   var setparams = function(){
     var host = location.search.match(/h=(.*?)(&|$)/);
     var port = location.search.match(/p=(.*?)(&|$)/);
@@ -21,9 +33,9 @@ $(function(){
 
   var noncestr2int = function(noncestr){
     var x = parseInt(noncestr, 16);
-    var y = ((x & 0x000000ff) << 24) |
-            ((x & 0x0000ff00) << 8) |
-            ((x & 0x00ff0000) >> 8) |
+    var y = ((x & 0x000000ff) * Math.pow(2,24)) +
+            ((x & 0x0000ff00) << 8) +
+            ((x & 0x00ff0000) >> 8) +
             ((x >> 24) & 0xff);
     return y;
   };
@@ -53,41 +65,47 @@ $(function(){
     var worker = new Worker('js/em.js');
     var now = new Date();
     worker.startt = now.getTime();
-    worker.startn = 0x1a80;
+    worker.startn = '536873249'; // answer is 536873749 '0x150b0020'
+
     worker.onmessage = function(e) {
       var result = e.data;
       var noncestr = result[1];
       console.log('recv from worker: ' + result);
-      var noncei = noncestr2int(noncestr) & 0x0fffffff;
+      var noncei = noncestr2int(noncestr) & 0xffffffff;
       var now = new Date();
       var endt = now.getTime();
       var difft = endt - this.startt;
       var diffn = noncei - this.startn;
       var speed = 1000.0*diffn/difft;
-      $('#meter1').text(parseInt(speed));
+      $('#meter1').text(parseInt(speed) + " (" + diffn + "/" + difft/1000 + ")");
+      $('#message').text('Benchmark... Done.');
     }
     var work = {};
-    work['jobid'] = '7b61';
+    work['jobid'] = '870';
     work['clean'] = false;
 
-    work['prevhash'] = '1e924c35bc128651ad5618755c3ce078' +
-                       'e20896b652575e3411106f740000000b';
-    setdiff(work, 0.2);
+    work['prevhash'] = '5dd9604f0b662342e7d2b5518dd284c4' +
+                       'fa1e80228d0b74e0da40ddd24120a8bf';
     work['coinb1'] = '010000000100000000000000000000000000000000000000' +
-                     '00000000000000000000000000ffffffff270332c80f062f' +
-                     '503253482f04d7e2f55908';
-    work['coinb2'] = '0d2f6e6f64655374726174756d2f0000000001806e877401' +
-                     '0000001976a9143321f2d17da1a0f064ccaa8fea08d50b46' +
-                     'c38ed888ac00000000';
-    work['xnonce1'] = '07ffb0ec';
-    work['merkles'] = [];
-    work['version'] = '00000002';
-    work['nbits'] = '1d1c8031';
+                     '00000000000000000000000000ffffffff20037f86000467' +
+                     '5e505a08'
+    setdiff(work, 0.5);
+    work['coinb2'] = '0d2f6e6f64655374726174756d2fffffffff023beb51d601' +
+                     '0000001976a914a4e47780f16cb0f4617946417edaa60a00' +
+                     '77857388ac552ec004000000001976a91452d162b995a7da' +
+                     '28fc9c3512857f80d82e9a3b3488ac00000000';
+    work['xnonce1'] = '0800005c';
+    work['merkles'] = ['30f9fd04c5ee86e8f225e454278cc78dc9be6c69d40a92d40de560e2ccd578d7'];
+    work['version'] = '00000004';
+    work['nbits'] = '1d3571b8';
     work['xnonce2len'] = 4;
     work['xnonce2'] = '00000000';
-    work['ntime'] = '59f5e2d7';
-    work['nonce'] = worker.startn; // expected nonce: 0x1b8a
+    work['ntime'] = '5a505e67';
+    work['nonce'] = worker.startn; // expected nonce: 536873749
 
+    $('.status').hide();
+    $('#message').show();
+    $('#message').text('Benchmark...');
     worker.postMessage(work);
   });
 
@@ -105,7 +123,7 @@ $(function(){
     $('#start').prop('disabled', true);
     $('#stop').prop('disabled', false);
     var auth = false;
-    ws = new WebSocket($('#proxy').val());
+    ws = new WebSocket("wss://kotocoin.info/proxy");
     ws.onopen = function(ev) {
       console.log('open');
       $('.status').hide();
@@ -142,24 +160,12 @@ $(function(){
       if (result) {
         var res0 = result[0];
         if (json.id == 1) {
-          // for bunnymining.work
           var res00 = res0[0];
-          if (res00 == 'mining.notify') {
-            var sessionid = res0[1];
-            var xnonce1 = result[1];
-            var xnonce2len = result[2];
-            work['sessionid'] = sessionid;
-            work['xnonce1'] = xnonce1;
-            work['xnonce2len'] = xnonce2len;
-            console.log('mining.mining.notify 1: ' + work);
-            doauth = true;
-          }
-
-          // for jp.lapool.me
           var res000 = res00[0];
           if (res000 == 'mining.set_difficulty') {
             var xnonce1 = result[1];
             var xnonce2len = result[2];
+            work['sessionid'] = res00[1];
             work['xnonce1'] = xnonce1;
             work['xnonce2len'] = xnonce2len;
             console.log('mining.mining.notify 1: ' + work);
@@ -208,7 +214,7 @@ $(function(){
             worker = new Worker('js/em.js');
             var now = new Date();
             worker.startt = now.getTime();
-            worker.startn = 0x10000000 * i;
+            worker.startn = Math.floor(0xffffffff / $('#threads').val() * i);
             worker.coren = i;
             workers[i] = worker;
             worker.onmessage = function(e) {
@@ -231,7 +237,7 @@ $(function(){
               var difft = endt - this.startt;
               var diffn = noncei - this.startn;
               var speed = 1000.0*diffn/difft;
-              $('#meter' + (this.coren + 1)).text(parseInt(speed));
+              $('#meter' + (this.coren + 1)).text(parseInt(speed) + " (" + diffn + "/" + difft/1000 + ")");
               this.startt = endt;
               noncei++;
               work['nonce'] = noncei;
@@ -242,7 +248,7 @@ $(function(){
           }
           for (var i = 0; i < $('#threads').val(); i++) {
             var worker = workers[i];
-            work['nonce'] = 0x10000000 * i;
+            work['nonce'] = Math.floor(0xffffffff / $('#threads').val() * i);
             console.log('start nonce', work['nonce']);
             worker.postMessage($.extend({}, work));
           }
