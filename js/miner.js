@@ -123,7 +123,7 @@ $(function(){
     $('#start').prop('disabled', true);
     $('#stop').prop('disabled', false);
     var auth = false;
-    ws = new WebSocket("wss://kotocoin.info/proxy");
+    ws = new WebSocket($('#proxy').val());
     ws.onopen = function(ev) {
       console.log('open');
       $('.status').hide();
@@ -205,6 +205,7 @@ $(function(){
           work['nbits'] = params[6];
           work['ntime'] = params[7];
           work['clean'] = params[8];
+          work['sapling'] = params[9];
           console.log('mining.notify 2: ' + work);
           for (var i = 0; i < $('#threads').val(); i++) {
             var worker = workers[i];
@@ -215,6 +216,7 @@ $(function(){
             var now = new Date();
             worker.startt = now.getTime();
             worker.startn = Math.floor(0xffffffff / $('#threads').val() * i);
+//            worker.startn = 0x10000000 * i;
             worker.coren = i;
             workers[i] = worker;
             worker.onmessage = function(e) {
@@ -249,6 +251,7 @@ $(function(){
           for (var i = 0; i < $('#threads').val(); i++) {
             var worker = workers[i];
             work['nonce'] = Math.floor(0xffffffff / $('#threads').val() * i);
+//            work['nonce'] = 0x10000000 * i;
             console.log('start nonce', work['nonce']);
             worker.postMessage($.extend({}, work));
           }
